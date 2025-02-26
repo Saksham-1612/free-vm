@@ -1,7 +1,7 @@
 name: SSH to GitHub Actions VM
 
 on:
-  workflow_dispatch:
+  workflow_dispatch: # Allows manual trigger
 
 jobs:
   ssh-runner:
@@ -18,10 +18,11 @@ jobs:
 
       - name: Start SSH Tunnel via Serveo
         run: |
-          ssh -o StrictHostKeyChecking=no -R 2222:localhost:22 serveo.net &
+          ssh -o StrictHostKeyChecking=no -R 0:localhost:22 serveo.net > serveo.txt 2>&1 &
           sleep 5
+          cat serveo.txt | tee /dev/stderr | grep -oE "serveo.net:[0-9]+" > ssh_port.txt
           echo "Now SSH into the VM using:"
-          echo "ssh -p 2222 root@serveo.net"
+          cat ssh_port.txt | sed 's/^/ssh -p /;s/$/ root@serveo.net/'
 
       - name: Keep VM Alive
         run: sleep 17999
