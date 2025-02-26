@@ -1,7 +1,7 @@
 name: SSH to GitHub Actions VM
 
 on:
-  workflow_dispatch:
+  workflow_dispatch: # Allows manual trigger
 
 jobs:
   ssh-runner:
@@ -19,9 +19,16 @@ jobs:
 
       - name: Start SSH Tunnel via LocalTunnel
         run: |
-          lt --port 22 > ssh_tunnel.txt 2>&1 &
+          lt --port 22 --print-requests > ssh_tunnel.txt 2>&1 &
           sleep 5
-          cat ssh_tunnel.txt  # Show the SSH tunnel URL in the logs
+          echo "🔹 SSH Tunnel URL:"
+          cat ssh_tunnel.txt | grep -o 'https://[^\"]*'
 
-      - name: Keep VM Alive
-        run: sleep 17999
+      - name: Keep VM Alive (Restart Every 5 Hours)
+        run: |
+          while true; do
+            echo "🔹 Keeping the VM alive..."
+            sleep 17999  # ~5 hours
+            echo "🔹 Restarting workflow to extend VM time..."
+            gh workflow run ssh-runner.yml  # Restart itself
+          done
