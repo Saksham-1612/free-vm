@@ -1,34 +1,27 @@
 name: SSH to GitHub Actions VM
 
 on:
-  workflow_dispatch: # Allows manual trigger
+  workflow_dispatch:
 
 jobs:
   ssh-runner:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Install SSH Server & LocalTunnel
+      - name: Install SSH Server
         run: |
           sudo apt update && sudo apt install -y openssh-server
           echo "PermitRootLogin yes" | sudo tee -a /etc/ssh/sshd_config
           echo "PasswordAuthentication yes" | sudo tee -a /etc/ssh/sshd_config
           sudo service ssh restart
           echo "root:github" | sudo chpasswd  # Set root password
-          npm install -g localtunnel  # Install LocalTunnel
 
-      - name: Start SSH Tunnel via LocalTunnel
+      - name: Start SSH Tunnel via Serveo
         run: |
-          lt --port 22 --print-requests > ssh_tunnel.txt 2>&1 &
+          ssh -o StrictHostKeyChecking=no -R 2222:localhost:22 serveo.net &
           sleep 5
-          echo "🔹 SSH Tunnel URL:"
-          cat ssh_tunnel.txt | grep -o 'https://[^\"]*'
+          echo "Now SSH into the VM using:"
+          echo "ssh -p 2222 root@serveo.net"
 
-      - name: Keep VM Alive (Restart Every 5 Hours)
-        run: |
-          while true; do
-            echo "🔹 Keeping the VM alive..."
-            sleep 17999  # ~5 hours
-            echo "🔹 Restarting workflow to extend VM time..."
-            gh workflow run ssh-runner.yml  # Restart itself
-          done
+      - name: Keep VM Alive
+        run: sleep 17999
