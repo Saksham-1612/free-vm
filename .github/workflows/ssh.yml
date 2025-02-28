@@ -18,13 +18,20 @@ jobs:
           sudo service ssh restart
           echo "root:github" | sudo chpasswd  # Set root password
 
-      - name: Start SSH Tunnel via Serveo
+      - name: Install & Authenticate ngrok
         run: |
-          ssh -o StrictHostKeyChecking=no -R 0:localhost:22 serveo.net > serveo.txt 2>&1 &
+          curl -s https://ngrok-agent.s3.amazonaws.com/ngrok.asc | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null
+          echo "deb https://ngrok-agent.s3.amazonaws.com buster main" | sudo tee /etc/apt/sources.list.d/ngrok.list
+          sudo apt update && sudo apt install -y ngrok
+          ngrok config add-authtoken 2tbyFMZTbGsnyrIiwkkFRe4daED_5qN5HnVvHt6oC4cLb44nj
+
+      - name: Start SSH Tunnel via ngrok
+        run: |
+          ngrok tcp 22 > ngrok.log 2>&1 &
           sleep 5
-          grep -oE "serveo.net:[0-9]+" serveo.txt | tee ssh_port.txt
+          curl -s localhost:4040/api/tunnels | jq -r '.tunnels[0].public_url' | tee ssh_url.txt
           echo "Now SSH into the VM using:"
-          cat ssh_port.txt | sed 's/^/ssh -p /;s/$/ root@serveo.net/'
+          cat ssh_url.txt | sed 's/tcp:\/\//ssh root@/;s/:/ -p /'
 
       - name: Keep VM Alive
         run: sleep 17999
