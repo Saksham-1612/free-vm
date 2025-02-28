@@ -43,3 +43,6 @@ jobs:
           echo "------------------------------------------------------"
           echo "ssh -o ProxyCommand='cloudflared access ssh --hostname ${CF_URL/https:\/\//}' root@localhost"
           echo "------------------------------------------------------"
+
+      - name: Keep VM Alive
+        run: sleep infinity
