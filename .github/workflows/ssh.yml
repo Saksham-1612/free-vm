@@ -18,39 +18,28 @@ jobs:
           sudo service ssh restart
           echo "root:github" | sudo chpasswd  # Set root password
 
-      - name: Install & Authenticate ngrok
+      - name: Install Cloudflare Tunnel
         run: |
-          curl -s https://ngrok-agent.s3.amazonaws.com/ngrok.asc | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null
-          echo "deb https://ngrok-agent.s3.amazonaws.com buster main" | sudo tee /etc/apt/sources.list.d/ngrok.list
-          sudo apt update && sudo apt install -y ngrok
-          ngrok config add-authtoken 2tbyFMZTbGsnyrIiwkkFRe4daED_5qN5HnVvHt6oC4cLb44nj
+          curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o cloudflared
+          chmod +x cloudflared
+          sudo mv cloudflared /usr/local/bin/
 
-      - name: Start SSH Tunnel via ngrok
+      - name: Start SSH Tunnel via Cloudflare
         run: |
-          echo "Starting ngrok tunnel..."
-          ngrok tcp 22 > ngrok.log 2>&1 &
-          sleep 10  # Ensure ngrok has time to initialize
-          
-          # Retry fetching the ngrok public URL
-          NGROK_URL=""
-          for i in {1..10}; do
-            NGROK_URL=$(curl -s http://127.0.0.1:4040/api/tunnels | jq -r '.tunnels[0].public_url')
-            if [[ "$NGROK_URL" != "null" && "$NGROK_URL" != "" ]]; then
-              break
-            fi
-            echo "Retrying to fetch ngrok URL ($i/10)..."
-            sleep 2
-          done
+          echo "Starting Cloudflare Tunnel..."
+          cloudflared tunnel --url ssh://localhost:22 > cf_tunnel.log 2>&1 &
+          sleep 10  # Allow time for tunnel initialization
 
-          if [[ "$NGROK_URL" == "null" || "$NGROK_URL" == "" ]]; then
-            echo "Error: Failed to retrieve ngrok URL"
-            cat ngrok.log
+          # Retrieve Cloudflare public URL
+          CF_URL=$(grep -oE "https://[a-zA-Z0-9.-]+.trycloudflare.com" cf_tunnel.log)
+          if [[ -z "$CF_URL" ]]; then
+            echo "Error: Failed to retrieve Cloudflare tunnel URL"
+            cat cf_tunnel.log
             exit 1
           fi
 
           echo "SSH Tunnel Ready!"
-          SSH_CMD=$(echo $NGROK_URL | sed 's/tcp:\/\//ssh root@/;s/:/ -p /')
           echo "Use this command to SSH into the VM:"
           echo "------------------------------------------------------"
-          echo $SSH_CMD
+          echo "ssh -o ProxyCommand='cloudflared access ssh --hostname ${CF_URL/https:\/\//}' root@localhost"
           echo "------------------------------------------------------"
