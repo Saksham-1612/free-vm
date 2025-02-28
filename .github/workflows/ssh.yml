@@ -27,11 +27,30 @@ jobs:
 
       - name: Start SSH Tunnel via ngrok
         run: |
+          echo "Starting ngrok tunnel..."
           ngrok tcp 22 > ngrok.log 2>&1 &
-          sleep 5
-          curl -s localhost:4040/api/tunnels | jq -r '.tunnels[0].public_url' | tee ssh_url.txt
-          echo "Now SSH into the VM using:"
-          cat ssh_url.txt | sed 's/tcp:\/\//ssh root@/;s/:/ -p /'
+          sleep 10  # Ensure ngrok has time to initialize
+          
+          # Retry fetching the ngrok public URL
+          NGROK_URL=""
+          for i in {1..10}; do
+            NGROK_URL=$(curl -s http://127.0.0.1:4040/api/tunnels | jq -r '.tunnels[0].public_url')
+            if [[ "$NGROK_URL" != "null" && "$NGROK_URL" != "" ]]; then
+              break
+            fi
+            echo "Retrying to fetch ngrok URL ($i/10)..."
+            sleep 2
+          done
 
-      - name: Keep VM Alive
-        run: sleep 17999
+          if [[ "$NGROK_URL" == "null" || "$NGROK_URL" == "" ]]; then
+            echo "Error: Failed to retrieve ngrok URL"
+            cat ngrok.log
+            exit 1
+          fi
+
+          echo "SSH Tunnel Ready!"
+          SSH_CMD=$(echo $NGROK_URL | sed 's/tcp:\/\//ssh root@/;s/:/ -p /')
+          echo "Use this command to SSH into the VM:"
+          echo "------------------------------------------------------"
+          echo $SSH_CMD
+          echo "------------------------------------------------------"
