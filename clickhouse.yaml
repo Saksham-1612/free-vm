@@ -1,0 +1,58 @@
+name: SSH to GitHub Actions VM with ClickHouse
+
+on:
+  workflow_dispatch: # Allows manual trigger
+
+jobs:
+  ssh-runner:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Install SSH Server
+        run: |
+          sudo apt update && sudo apt install -y openssh-server
+          echo "PermitRootLogin yes" | sudo tee -a /etc/ssh/sshd_config
+          echo "PasswordAuthentication yes" | sudo tee -a /etc/ssh/sshd_config
+          sudo service ssh restart
+          echo "root:github" | sudo chpasswd  # Set root password
+
+      - name: Install ClickHouse
+        run: |
+          sudo apt-get install -y apt-transport-https ca-certificates dirmngr
+          sudo apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv 8919F6BD2B48D754
+          echo "deb https://packages.clickhouse.com/deb stable main" | sudo tee /etc/apt/sources.list.d/clickhouse.list
+          sudo apt-get update
+          sudo apt-get install -y clickhouse-server clickhouse-client
+          sudo service clickhouse-server start
+          echo "ClickHouse installed and started"
+
+      - name: Install Cloudflare Tunnel
+        run: |
+          curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o cloudflared
+          chmod +x cloudflared
+          sudo mv cloudflared /usr/local/bin/
+
+      - name: Start SSH Tunnel via Cloudflare
+        run: |
+          echo "Starting Cloudflare Tunnel..."
+          cloudflared tunnel --url ssh://localhost:22 > cf_tunnel.log 2>&1 &
+          sleep 10  # Allow time for tunnel initialization
+
+          # Retrieve Cloudflare public URL
+          CF_URL=$(grep -oE "https://[a-zA-Z0-9.-]+.trycloudflare.com" cf_tunnel.log)
+          if [[ -z "$CF_URL" ]]; then
+            echo "Error: Failed to retrieve Cloudflare tunnel URL"
+            cat cf_tunnel.log
+            exit 1
+          fi
+
+          echo "SSH Tunnel Ready!"
+          echo "Use this command to SSH into the VM:"
+          echo "------------------------------------------------------"
+          echo "ssh -o ProxyCommand='cloudflared access ssh --hostname ${CF_URL/https:\/\//}' root@localhost"
+          echo "------------------------------------------------------"
+          echo "ClickHouse is available at localhost:8123 (HTTP) and localhost:9000 (native)"
+          echo "You can connect using clickhouse-client from the command line"
+
+      - name: Keep VM Alive
+        run: sleep infinity
