@@ -1,0 +1,58 @@
+name: SSH and K3s on GitHub Actions
+
+on:
+  workflow_dispatch:
+
+jobs:
+  ssh-k3s:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Install SSH Server
+        run: |
+          sudo apt update && sudo apt install -y openssh-server
+          echo "PermitRootLogin yes" | sudo tee -a /etc/ssh/sshd_config
+          echo "PasswordAuthentication yes" | sudo tee -a /etc/ssh/sshd_config
+          sudo service ssh restart
+          echo "root:github" | sudo chpasswd
+
+      - name: Install Docker
+        run: |
+          curl -fsSL https://get.docker.com | sh
+          sudo usermod -aG docker $USER
+
+      - name: Install K3s
+        run: |
+          curl -sfL https://get.k3s.io | sh -
+          echo 'export KUBECONFIG=/etc/rancher/k3s/k3s.yaml' >> ~/.bashrc
+          export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+          kubectl get nodes
+
+      - name: Install Cloudflared
+        run: |
+          curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o cloudflared
+          chmod +x cloudflared
+          sudo mv cloudflared /usr/local/bin/
+
+      - name: Start Cloudflare SSH Tunnel
+        run: |
+          cloudflared tunnel --url ssh://localhost:22 > cf_ssh.log 2>&1 &
+          sleep 10
+          CF_URL=$(grep -oE "https://[a-zA-Z0-9.-]+.trycloudflare.com" cf_ssh.log)
+          echo "SSH Tunnel URL: $CF_URL"
+          echo "ssh -o ProxyCommand='cloudflared access ssh --hostname ${CF_URL/https:\/\//}' root@localhost"
+
+      - name: Start Cloudflare K8s Port Tunnel
+        run: |
+          export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+          kubectl run hello-k8s --image=nginx --port=80
+          kubectl expose pod hello-k8s --type=NodePort --port=80
+          PORT=$(kubectl get svc hello-k8s -o jsonpath='{.spec.ports[0].nodePort}')
+          echo "Exposing service on NodePort: $PORT"
+          cloudflared tunnel --url http://localhost:$PORT > cf_k8s.log 2>&1 &
+          sleep 10
+          K8S_URL=$(grep -oE "https://[a-zA-Z0-9.-]+.trycloudflare.com" cf_k8s.log)
+          echo "K8s Service exposed at: $K8S_URL"
+
+      - name: Keep Runner Alive
+        run: sleep infinity
