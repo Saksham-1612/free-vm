@@ -1,9 +1,7 @@
 name: SSH to GitHub Actions VM
 
 on:
-  workflow_dispatch: # Allows manual trigger
-  schedule:
-    # - cron: "0 */5 * * *" # Runs every 5 hours to auto-restart
+  workflow_dispatch: # Trigger manually
 
 jobs:
   ssh-runner:
@@ -12,36 +10,43 @@ jobs:
     steps:
       - name: Install SSH Server
         run: |
-          sudo apt update && sudo apt install -y openssh-server
+          sudo apt update
+          sudo apt install -y openssh-server
+          sudo systemctl enable ssh
+          sudo systemctl start ssh
+          
           echo "PermitRootLogin yes" | sudo tee -a /etc/ssh/sshd_config
           echo "PasswordAuthentication yes" | sudo tee -a /etc/ssh/sshd_config
-          sudo service ssh restart
-          echo "root:github" | sudo chpasswd  # Set root password
+          echo "PermitEmptyPasswords no" | sudo tee -a /etc/ssh/sshd_config
+          echo "root:github" | sudo chpasswd
+          sudo systemctl restart ssh
 
-      - name: Install Cloudflare Tunnel
+      - name: Download Cloudflared
         run: |
           curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o cloudflared
           chmod +x cloudflared
-          sudo mv cloudflared /usr/local/bin/
+          sudo mv cloudflared /usr/local/bin/cloudflared
 
-      - name: Start SSH Tunnel via Cloudflare
+      - name: Start Cloudflare Tunnel
         run: |
           echo "Starting Cloudflare Tunnel..."
-          cloudflared tunnel --url ssh://localhost:22 > cf_tunnel.log 2>&1 &
-          sleep 10  # Allow time for tunnel initialization
+          cloudflared tunnel --url ssh://localhost:22 --no-autoupdate > cf.log 2>&1 &
 
-          # Retrieve Cloudflare public URL
-          CF_URL=$(grep -oE "https://[a-zA-Z0-9.-]+.trycloudflare.com" cf_tunnel.log)
+          echo "Waiting for Cloudflare tunnel to be ready..."
+          sleep 15
+
+          CF_URL=$(grep -oE "https://[a-zA-Z0-9.-]+\.trycloudflare\.com" cf.log | head -n 1)
           if [[ -z "$CF_URL" ]]; then
-            echo "Error: Failed to retrieve Cloudflare tunnel URL"
-            cat cf_tunnel.log
+            echo "Failed to retrieve Cloudflare URL"
+            cat cf.log
             exit 1
           fi
 
-          echo "SSH Tunnel Ready!"
-          echo "Use this command to SSH into the VM:"
+          echo "✅ SSH Tunnel Ready!"
+          echo "🌐 Tunnel URL: $CF_URL"
+          echo "🔑 Login using:"
           echo "------------------------------------------------------"
-          echo "ssh -o ProxyCommand='cloudflared access ssh --hostname ${CF_URL/https:\/\//}' root@localhost"
+          echo "ssh -o ProxyCommand=\"cloudflared access ssh --hostname ${CF_URL/https:\/\//}\" root@localhost"
           echo "------------------------------------------------------"
 
       - name: Keep VM Alive
