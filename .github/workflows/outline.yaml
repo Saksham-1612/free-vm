@@ -1,50 +1,17 @@
-name: Expose Outline wiki via ngrok
+name: Expose Outline Wiki via Serveo
 
 on:
   workflow_dispatch:
 
 jobs:
-  expose-outline:
+  expose-ports:
     runs-on: ubuntu-latest
     steps:
       - name: Install dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y curl jq socat openssh-server
+          sudo apt-get install -y curl jq socat openssh-server python3-pip openssh-client
 
-      - name: Install Docker (if missing)
-        run: |
-          if ! command -v docker &> /dev/null; then
-            curl -fsSL https://get.docker.com | sh
-            sudo usermod -aG docker $USER
-            newgrp docker
-          fi
-
-      - name: Run Outline wiki container on port 8090
-        run: |
-          docker rm -f outline || true
-          docker run -d --name outline -p 8090:3000 outlinewiki/outline
-
-      - name: Install ngrok
-        run: |
-          curl -s https://ngrok-agent.s3.amazonaws.com/ngrok.asc | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null
-          echo "deb https://ngrok-agent.s3.amazonaws.com buster main" | sudo tee /etc/apt/sources.list.d/ngrok.list
-          sudo apt update && sudo apt install ngrok -y
-
-      - name: Authenticate ngrok with embedded token
-        run: |
-          ngrok config add-authtoken 2tbyFMZTbGsnyrIiwkkFRe4daED_5qN5HnVvHt6oC4cLb44nj
-
-      - name: Start ngrok tunnel for port 8090
-        run: |
-          nohup ngrok tcp 8090 --log=stdout > ngrok.log 2>&1 &
-
-      - name: Wait for ngrok to initialize and show public URL
-        run: |
-          sleep 8
-          curl --silent http://127.0.0.1:4040/api/tunnels | jq '.tunnels[0].public_url'
-
-      - name: Setup SSH server (to allow ssh access)
+      - name: Start SSH server
         run: |
           sudo service ssh start
           echo "root:Docker!" | sudo chpasswd
@@ -52,7 +19,19 @@ jobs:
           sudo sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config
           sudo service ssh restart
 
-      - name: Keep job alive to keep tunnel open and ssh running
+      - name: Run Outline container
+        run: docker run -d --name outline -p 8090:3000 outlinewiki/outline
+
+      - name: Start Serveo tunnel (expose port 8090)
         run: |
-          echo "Outline and SSH server are running. SSH with root/Docker! on this machine."
-          tail -f ngrok.log
+          nohup ssh -o StrictHostKeyChecking=no -R 80:localhost:8090 serveo.net > serveo.log 2>&1 &
+
+      - name: Show Serveo public URL
+        run: |
+          sleep 8
+          head -n 20 serveo.log
+
+      - name: Keep job alive to keep tunnel and ssh running
+        run: |
+          echo "Tunnel and SSH server are running. SSH with root/Docker! on this machine."
+          tail -f serveo.log
