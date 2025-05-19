@@ -1,0 +1,35 @@
+name: Run K3s in GitHub Actions
+
+on:
+  workflow_dispatch:
+
+jobs:
+  k3s-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up K3s
+        uses: AbsaOSS/k3d-action@v2
+        with:
+          cluster-name: test-cluster
+          args: >-
+            --agents 1
+            --port "8080:80@loadbalancer"
+
+      - name: Check cluster nodes
+        run: |
+          kubectl get nodes
+
+      - name: Install Helm
+        run: |
+          curl https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3 | bash
+          helm version
+
+      - name: Add Devtron Helm repo
+        run: |
+          helm repo add devtron https://helm.devtron.ai
+          helm repo update
+
+      - name: Install Devtron (for demo)
+        run: |
+          helm install devtron devtron/devtron-operator --namespace devtroncd --create-namespace
+          kubectl get pods -n devtroncd
