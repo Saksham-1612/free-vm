@@ -1,4 +1,4 @@
-name: Run K3s in GitHub Actions with SSH [ Devtron ]
+name: Run K3s Dev in GitHub Actions with SSH
 
 on:
   workflow_dispatch:
@@ -7,9 +7,6 @@ jobs:
   k3s-test:
     runs-on: ubuntu-latest
     steps:
-      - name: Set up tmate session (SSH into this runner)
-        uses: mxschmitt/action-tmate@v3
-
       - name: Set up K3s
         uses: AbsaOSS/k3d-action@v2
         with:
@@ -32,7 +29,10 @@ jobs:
           helm repo add devtron https://helm.devtron.ai
           helm repo update
 
-      - name: Install Devtron (for demo)
+      - name: Install Devtron
         run: |
           helm install devtron devtron/devtron-operator --namespace devtroncd --create-namespace
           kubectl get pods -n devtroncd
+
+      - name: SSH into GitHub Actions runner (tmate)
+        uses: mxschmitt/action-tmate@v3
