@@ -1,4 +1,4 @@
-name: Run K3s in GitHub Actions
+name: Run K3s in GitHub Actions with SSH [ Devtron ]
 
 on:
   workflow_dispatch:
@@ -7,6 +7,9 @@ jobs:
   k3s-test:
     runs-on: ubuntu-latest
     steps:
+      - name: Set up tmate session (SSH into this runner)
+        uses: mxschmitt/action-tmate@v3
+
       - name: Set up K3s
         uses: AbsaOSS/k3d-action@v2
         with:
