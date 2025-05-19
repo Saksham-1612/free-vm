@@ -23,7 +23,7 @@ jobs:
       - name: Run Outline wiki container on port 8090
         run: |
           docker rm -f outline || true
-          docker run -d --name outline -p 8090:3000 outline/outline
+          docker run -d --name outline -p 8090:3000 outlinewiki/outline
 
       - name: Install ngrok
         run: |
