@@ -1,45 +1,29 @@
-name: Expose VM Ports via ngrok and run Outline wiki
+name: Expose Outline wiki via ngrok
 
 on:
   workflow_dispatch:
 
 jobs:
-  expose-ports:
+  expose-outline:
     runs-on: ubuntu-latest
     steps:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y curl jq socat openssh-server python3-pip
+          sudo apt-get install -y curl jq socat openssh-server
 
-      - name: Install k3s (lightweight Kubernetes)
-        run: |
-          curl -sfL https://get.k3s.io | sh -
-          sudo chmod +x /usr/local/bin/kubectl
-
-      - name: Install kubectl (ensure latest)
-        run: |
-          curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
-          sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
-          kubectl version --client
-
-      - name: Install Helm
-        run: |
-          curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
-          helm version
-
-      - name: Start Outline (docker required)
+      - name: Install Docker (if missing)
         run: |
           if ! command -v docker &> /dev/null; then
             curl -fsSL https://get.docker.com | sh
             sudo usermod -aG docker $USER
             newgrp docker
           fi
-          docker run -d --name outline -p 8090:3000 outline/outline
 
-      - name: Start simple HTTP server on 8090 (fallback)
+      - name: Run Outline wiki container on port 8090
         run: |
-          nohup python3 -m http.server 8090 &
+          docker rm -f outline || true
+          docker run -d --name outline -p 8090:3000 outline/outline
 
       - name: Install ngrok
         run: |
@@ -70,5 +54,5 @@ jobs:
 
       - name: Keep job alive to keep tunnel open and ssh running
         run: |
-          echo "Tunnel and SSH server are running. SSH with root/Docker! on this machine."
+          echo "Outline and SSH server are running. SSH with root/Docker! on this machine."
           tail -f ngrok.log
